@@ -3,8 +3,19 @@ import Charts
 
 struct UsageChartView: View {
     @ObservedObject var historyService: UsageHistoryService
+    /// Which provider's two series to draw. The popover shows one provider at
+    /// a time, so the chart does too — four lines in a 120pt plot is noise.
+    var provider: UsageProvider = .claude
     @State private var selectedRange: TimeRange = .day1
     @State private var hoverDate: Date?
+
+    private func window5h(_ point: UsageDataPoint) -> Double? {
+        provider == .codex ? point.pct5hCodex : point.pct5h
+    }
+
+    private func window7d(_ point: UsageDataPoint) -> Double? {
+        provider == .codex ? point.pct7dCodex : point.pct7d
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -18,7 +29,9 @@ struct UsageChartView: View {
 
             let points = historyService.downsampledPoints(for: selectedRange)
 
-            if points.isEmpty {
+            // A point recorded before Codex tracking was on carries nothing for
+            // this provider, so "has points" is not the same as "has a line".
+            if !points.contains(where: { window5h($0) != nil || window7d($0) != nil }) {
                 Text("No history data yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -36,19 +49,21 @@ struct UsageChartView: View {
         }
 
         Chart {
-            ForEach(points) { point in
+            // Filtering the nils leaves a gap in the line rather than a run of
+            // false zeros, for the stretch before Codex tracking was on.
+            ForEach(points.filter { window5h($0) != nil }) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pct5h * 100)
+                    y: .value("Usage", (window5h(point) ?? 0) * 100)
                 )
                 .foregroundStyle(by: .value("Window", "5h"))
                 .interpolationMethod(.catmullRom)
             }
 
-            ForEach(points) { point in
+            ForEach(points.filter { window7d($0) != nil }) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pct7d * 100)
+                    y: .value("Usage", (window7d(point) ?? 0) * 100)
                 )
                 .foregroundStyle(by: .value("Window", "7d"))
                 .interpolationMethod(.catmullRom)
@@ -59,19 +74,23 @@ struct UsageChartView: View {
                     .foregroundStyle(.secondary.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1))
 
-                PointMark(
-                    x: .value("Time", iv.date),
-                    y: .value("Usage", iv.pct5h * 100)
-                )
-                .foregroundStyle(.blue)
-                .symbolSize(24)
+                if let pct5h = iv.value5h(for: provider) {
+                    PointMark(
+                        x: .value("Time", iv.date),
+                        y: .value("Usage", pct5h * 100)
+                    )
+                    .foregroundStyle(.blue)
+                    .symbolSize(24)
+                }
 
-                PointMark(
-                    x: .value("Time", iv.date),
-                    y: .value("Usage", iv.pct7d * 100)
-                )
-                .foregroundStyle(.orange)
-                .symbolSize(24)
+                if let pct7d = iv.value7d(for: provider) {
+                    PointMark(
+                        x: .value("Time", iv.date),
+                        y: .value("Usage", pct7d * 100)
+                    )
+                    .foregroundStyle(.orange)
+                    .symbolSize(24)
+                }
             }
         }
         .chartXScale(domain: Date.now.addingTimeInterval(-selectedRange.interval)...Date.now)
@@ -108,7 +127,7 @@ struct UsageChartView: View {
         .chartXSelection(value: $hoverDate)
         .overlay(alignment: .top) {
             if let iv = interpolated {
-                tooltipView(date: iv.date, pct5h: iv.pct5h, pct7d: iv.pct7d)
+                tooltipView(values: iv)
             }
         }
         .frame(height: 120)
@@ -116,23 +135,29 @@ struct UsageChartView: View {
     }
 
     @ViewBuilder
-    private func tooltipView(date: Date, pct5h: Double, pct7d: Double) -> some View {
+    private func tooltipView(values: UsageChartInterpolatedValues) -> some View {
         VStack(spacing: 2) {
-            Text(date, format: tooltipDateFormat)
+            Text(values.date, format: tooltipDateFormat)
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
             HStack(spacing: 6) {
-                Label("\(Int(round(pct5h * 100)))%", systemImage: "circle.fill")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.blue)
-                Label("\(Int(round(pct7d * 100)))%", systemImage: "circle.fill")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.orange)
+                if let pct5h = values.value5h(for: provider) {
+                    tooltipValue(pct5h, color: .blue)
+                }
+                if let pct7d = values.value7d(for: provider) {
+                    tooltipValue(pct7d, color: .orange)
+                }
             }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func tooltipValue(_ fraction: Double, color: Color) -> some View {
+        Label("\(Int(round(fraction * 100)))%", systemImage: "circle.fill")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(color)
     }
 
     // MARK: - Formatting
@@ -166,6 +191,30 @@ struct UsageChartInterpolatedValues {
     let date: Date
     let pct5h: Double
     let pct7d: Double
+    let pct5hCodex: Double?
+    let pct7dCodex: Double?
+
+    init(
+        date: Date,
+        pct5h: Double,
+        pct7d: Double,
+        pct5hCodex: Double? = nil,
+        pct7dCodex: Double? = nil
+    ) {
+        self.date = date
+        self.pct5h = pct5h
+        self.pct7d = pct7d
+        self.pct5hCodex = pct5hCodex
+        self.pct7dCodex = pct7dCodex
+    }
+
+    func value5h(for provider: UsageProvider) -> Double? {
+        provider == .codex ? pct5hCodex : pct5h
+    }
+
+    func value7d(for provider: UsageProvider) -> Double? {
+        provider == .codex ? pct7dCodex : pct7d
+    }
 }
 
 enum UsageChartInterpolation {
@@ -209,7 +258,13 @@ enum UsageChartInterpolation {
                 return UsageChartInterpolatedValues(
                     date: date,
                     pct5h: clampToUnitInterval(pct5h),
-                    pct7d: clampToUnitInterval(pct7d)
+                    pct7d: clampToUnitInterval(pct7d),
+                    pct5hCodex: interpolateOptional(
+                        sorted, i0: i0, i: i, i3: i3, t: t, key: \.pct5hCodex
+                    ),
+                    pct7dCodex: interpolateOptional(
+                        sorted, i0: i0, i: i, i3: i3, t: t, key: \.pct7dCodex
+                    )
                 )
             }
         }
@@ -219,5 +274,26 @@ enum UsageChartInterpolation {
 
     private static func clampToUnitInterval(_ value: Double) -> Double {
         min(max(value, 0), 1)
+    }
+
+    /// Interpolates a series that may be missing values.
+    ///
+    /// Both bracketing points must have one — a value cannot be invented for a
+    /// span where Codex reported nothing. The outer control points fall back to
+    /// their neighbours, which is what the existing series does at the ends of
+    /// the array anyway.
+    private static func interpolateOptional(
+        _ sorted: [UsageDataPoint],
+        i0: Int,
+        i: Int,
+        i3: Int,
+        t: Double,
+        key: KeyPath<UsageDataPoint, Double?>
+    ) -> Double? {
+        guard let p1 = sorted[i][keyPath: key],
+              let p2 = sorted[i + 1][keyPath: key] else { return nil }
+        let p0 = sorted[i0][keyPath: key] ?? p1
+        let p3 = sorted[i3][keyPath: key] ?? p2
+        return clampToUnitInterval(catmullRom(p0, p1, p2, p3, t: t))
     }
 }

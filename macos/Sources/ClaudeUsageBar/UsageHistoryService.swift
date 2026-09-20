@@ -62,8 +62,18 @@ class UsageHistoryService: ObservableObject {
 
     // MARK: - Record
 
-    func recordDataPoint(pct5h: Double, pct7d: Double) {
-        let point = UsageDataPoint(pct5h: pct5h, pct7d: pct7d)
+    func recordDataPoint(
+        pct5h: Double,
+        pct7d: Double,
+        pct5hCodex: Double? = nil,
+        pct7dCodex: Double? = nil
+    ) {
+        let point = UsageDataPoint(
+            pct5h: pct5h,
+            pct7d: pct7d,
+            pct5hCodex: pct5hCodex,
+            pct7dCodex: pct7dCodex
+        )
         history.dataPoints.append(point)
         isDirty = true
         startFlushTimerIfNeeded()
@@ -149,9 +159,19 @@ class UsageHistoryService: ObservableObject {
             return UsageDataPoint(
                 timestamp: Date(timeIntervalSince1970: avgTimestamp),
                 pct5h: avgPct5h,
-                pct7d: avgPct7d
+                pct7d: avgPct7d,
+                pct5hCodex: Self.average(bucket.compactMap(\.pct5hCodex)),
+                pct7dCodex: Self.average(bucket.compactMap(\.pct7dCodex))
             )
         }
+    }
+
+    /// Averages only the points that carry a Codex reading — a bucket
+    /// straddling the moment Codex tracking was switched on must not be
+    /// dragged toward zero by the points from before it.
+    private static func average(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
     }
 
     // MARK: - Pruning

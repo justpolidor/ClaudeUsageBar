@@ -23,6 +23,7 @@ A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it
 - Menu bar icon with a mini dual-bar showing 5-hour and 7-day utilization
 - Detailed popover with per-window usage, per-model breakdown, and reset timers
 - Extra usage tracking with USD currency display
+- Codex usage alongside Claude, read straight from the Codex CLI's session logs — no second sign-in
 - Usage history chart — see how your usage evolves over time (1h / 6h / 1d / 7d / 30d)
 - Hover over the chart to see exact values at any point
 - Configurable polling interval (5m / 15m / 30m / 1h)
@@ -51,6 +52,27 @@ make dmg            # build drag-to-Applications disk image
 make install        # copy to /Applications
 ```
 
+### Download the latest main build
+
+Every merge to `main` publishes a DMG to a rolling `latest` pre-release, so the newest build always sits at the same URL:
+
+```text
+https://github.com/justpolidor/ClaudeUsageBar/releases/download/latest/ClaudeUsageBar.dmg
+```
+
+It is replaced by each merge and is never offered to Sparkle — versioned releases still come from `v*` tags. Like those releases it is ad-hoc signed, so first launch wants right-click → **Open**.
+
+To get a DMG for a branch before merging, run the **Tests** workflow manually from the Actions tab (`workflow_dispatch`); that run packages one and attaches it as an artifact.
+
+### What CI runs
+
+| Trigger | Workflow | What it does |
+|---------|----------|--------------|
+| Pull request to `main` | `tests.yml` | Runs the test suite |
+| Manual dispatch | `tests.yml` | Tests, plus a DMG artifact for that branch |
+| Merge to `main` | `publish.yml` | Tests, then publishes the DMG to the `latest` pre-release |
+| `v*` tag | `release.yml` | Full versioned release, signed Sparkle appcast, GitHub Pages |
+
 ## Usage
 
 1. Launch the app — a menu bar icon appears
@@ -75,6 +97,12 @@ All data is stored locally in `~/.config/claude-usage-bar/`:
 | `history.json` | Usage history for the chart (30-day retention) |
 
 History is buffered in memory and flushed to disk every 5 minutes and on app quit. No data is sent anywhere other than the Anthropic API.
+
+## Codex
+
+If the Codex CLI is installed, its rate-limit windows show up in the popover too. Codex has no usage API, but every request it makes records the account's limits in its own session log, so the app reads the newest entry from `~/.codex/sessions/` — nothing to authorize, nothing fetched.
+
+The catch: those numbers only move when Codex runs, so the popover labels them with when Codex last reported rather than when the app last polled. Settings turns tracking off and picks which provider the menu bar icon shows (four bars do not fit).
 
 ## Development
 
@@ -137,6 +165,7 @@ macos/                           # macOS menu bar app (Swift/SwiftUI)
 ├── Sources/ClaudeUsageBar/
 │   ├── ClaudeUsageBarApp.swift      # App entry point, menu bar setup
 │   ├── UsageService.swift           # OAuth, polling, API calls
+│   ├── CodexUsageService.swift      # Codex limits read from CLI session logs
 │   ├── UsageModel.swift             # API response types
 │   ├── UsageHistoryModel.swift      # History data types, time ranges
 │   ├── UsageHistoryService.swift    # Persistence, downsampling

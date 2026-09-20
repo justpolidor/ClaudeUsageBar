@@ -64,6 +64,8 @@ class NotificationService: ObservableObject {
     private var previousPct5h: Double?
     private var previousPct7d: Double?
     private var previousPctExtra: Double?
+    private var previousPct5hCodex: Double?
+    private var previousPct7dCodex: Double?
     private let delegate = NotificationDelegate()
 
     /// False when this process cannot use notifications at all, so callers can
@@ -83,6 +85,7 @@ class NotificationService: ObservableObject {
         threshold5h = clamp(value)
         UserDefaults.standard.set(threshold5h, forKey: "notificationThreshold5h")
         previousPct5h = nil
+        previousPct5hCodex = nil
         if threshold5h > 0 { requestPermission() }
     }
 
@@ -90,6 +93,7 @@ class NotificationService: ObservableObject {
         threshold7d = clamp(value)
         UserDefaults.standard.set(threshold7d, forKey: "notificationThreshold7d")
         previousPct7d = nil
+        previousPct7dCodex = nil
         if threshold7d > 0 { requestPermission() }
     }
 
@@ -108,7 +112,21 @@ class NotificationService: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func checkAndNotify(pct5h: Double, pct7d: Double, pctExtra: Double) {
+    /// Codex reuses the Claude thresholds rather than adding a second set of
+    /// sliders — one "warn me at 80%" is what people mean — but tracks its own
+    /// previous values so one provider's crossing can't mask the other's.
+    func checkAndNotify(
+        pct5h: Double,
+        pct7d: Double,
+        pctExtra: Double,
+        pct5hCodex: Double? = nil,
+        pct7dCodex: Double? = nil
+    ) {
+        checkAndNotifyClaude(pct5h: pct5h, pct7d: pct7d, pctExtra: pctExtra)
+        checkAndNotifyCodex(pct5h: pct5hCodex, pct7d: pct7dCodex)
+    }
+
+    private func checkAndNotifyClaude(pct5h: Double, pct7d: Double, pctExtra: Double) {
         let current5h = pct5h * 100
         let current7d = pct7d * 100
         let currentExtra = pctExtra * 100
@@ -137,6 +155,39 @@ class NotificationService: ObservableObject {
 
         for alert in alerts {
             sendNotification(window: alert.window, pct: alert.pct)
+        }
+    }
+
+    private func checkAndNotifyCodex(pct5h: Double?, pct7d: Double?) {
+        // No reading at all is not a reading of zero: skipping keeps the
+        // previous values intact so the next real reading still counts as a
+        // crossing rather than a re-crossing.
+        guard let pct5h, let pct7d else { return }
+
+        let current5h = pct5h * 100
+        let current7d = pct7d * 100
+        let prev5h = previousPct5hCodex ?? 0
+        let prev7d = previousPct7dCodex ?? 0
+
+        defer {
+            previousPct5hCodex = current5h
+            previousPct7dCodex = current7d
+        }
+
+        let alerts = crossedThresholds(
+            threshold5h: threshold5h,
+            threshold7d: threshold7d,
+            thresholdExtra: 0,
+            previous5h: prev5h,
+            previous7d: prev7d,
+            previousExtra: 0,
+            current5h: current5h,
+            current7d: current7d,
+            currentExtra: 0
+        )
+
+        for alert in alerts {
+            sendNotification(window: "Codex \(alert.window)", pct: alert.pct)
         }
     }
 
