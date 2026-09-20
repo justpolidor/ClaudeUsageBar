@@ -37,25 +37,7 @@ private func drawRow(label: String, barX: CGFloat, barY: CGFloat, labelX: CGFloa
     drawBarFill(barX, barY)
 }
 
-/// Which provider's windows the menu bar shows. Four bars in 18 points is
-/// mush, so the icon shows one provider and the popover shows both.
-enum MenuBarProvider: String, CaseIterable, Identifiable {
-    case claude
-    case codex
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .claude: return "Claude"
-        case .codex: return "Codex"
-        }
-    }
-
-    static let defaultsKey = "menuBarProvider"
-}
-
-func renderIcon(pct5h: Double, pct7d: Double, provider: MenuBarProvider = .claude) -> NSImage {
+func renderIcon(pct5h: Double, pct7d: Double, provider: UsageProvider = .claude) -> NSImage {
     let image = NSImage(size: NSSize(width: iconWidth, height: iconHeight), flipped: true) { _ in
         let offset = logoSize + logoGap
         let barX = offset + labelWidth + labelGap
@@ -142,7 +124,7 @@ private func drawClaudeLogo(x: CGFloat, y: CGFloat, size: CGFloat) {
 
 /// ponytail: Codex gets a "cx" wordmark rather than a logo — no asset to ship
 /// and no trademark to get wrong. Swap in an image here if one turns up.
-private func drawProviderMark(_ provider: MenuBarProvider, x: CGFloat, y: CGFloat, size: CGFloat) {
+private func drawProviderMark(_ provider: UsageProvider, x: CGFloat, y: CGFloat, size: CGFloat) {
     switch provider {
     case .claude:
         drawClaudeLogo(x: x, y: y, size: size)

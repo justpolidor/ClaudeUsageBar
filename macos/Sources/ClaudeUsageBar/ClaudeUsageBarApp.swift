@@ -7,11 +7,11 @@ struct ClaudeUsageBarApp: App {
     @StateObject private var notificationService = NotificationService()
     @StateObject private var codexService = CodexUsageService()
     @StateObject private var appUpdater = AppUpdater()
-    @AppStorage(MenuBarProvider.defaultsKey) private var menuBarProvider = MenuBarProvider.claude
+    @AppStorage(UsageProvider.menuBarDefaultsKey) private var menuBarProvider = UsageProvider.claude
 
     /// Falls back to Claude whenever Codex is picked but has nothing to show,
     /// so the icon never sits empty because of a setting the user forgot.
-    private var iconProvider: MenuBarProvider {
+    private var iconProvider: UsageProvider {
         (menuBarProvider == .codex && codexService.usage != nil) ? .codex : .claude
     }
 

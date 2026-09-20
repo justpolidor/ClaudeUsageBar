@@ -6,7 +6,7 @@ struct SettingsWindowContent: View {
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var codexService: CodexUsageService
     @ObservedObject var appUpdater: AppUpdater
-    @AppStorage(MenuBarProvider.defaultsKey) private var menuBarProvider = MenuBarProvider.claude
+    @AppStorage(UsageProvider.menuBarDefaultsKey) private var menuBarProvider = UsageProvider.claude
 
     var body: some View {
         Form {
@@ -36,7 +36,7 @@ struct SettingsWindowContent: View {
                         .foregroundStyle(.secondary)
 
                     Picker("Menu Bar Shows", selection: $menuBarProvider) {
-                        ForEach(MenuBarProvider.allCases) { provider in
+                        ForEach(UsageProvider.allCases) { provider in
                             Text(provider.displayName).tag(provider)
                         }
                     }

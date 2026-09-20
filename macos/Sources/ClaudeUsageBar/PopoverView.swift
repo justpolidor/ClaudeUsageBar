@@ -7,6 +7,13 @@ struct PopoverView: View {
     @ObservedObject var codexService: CodexUsageService
     @ObservedObject var appUpdater: AppUpdater
     @AppStorage("setupComplete") private var setupComplete = false
+    @AppStorage(UsageProvider.popoverTabDefaultsKey) private var selectedTab = UsageProvider.claude
+
+    /// The remembered tab can point at Codex after tracking is switched off,
+    /// so the setting decides, not the stored value.
+    private var activeTab: UsageProvider {
+        codexService.isActive ? selectedTab : .claude
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -17,17 +24,38 @@ struct PopoverView: View {
                     onComplete: { setupComplete = true }
                 )
             } else {
-                Text("Claude Usage")
-                    .font(.headline)
+                header
                 if !service.isAuthenticated {
                     signInView
                 } else {
-                    usageView
+                    switch activeTab {
+                    case .claude: claudeUsageView
+                    case .codex: codexUsageView
+                    }
+                    footerView
                 }
             }
         }
         .padding()
         .frame(width: 340)
+    }
+
+    /// One provider means a title; two mean a switcher. No point spending a
+    /// row of the popover on a picker with nothing to pick.
+    @ViewBuilder
+    private var header: some View {
+        if codexService.isActive {
+            Picker("", selection: $selectedTab) {
+                ForEach(UsageProvider.allCases) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        } else {
+            Text("Claude Usage")
+                .font(.headline)
+        }
     }
 
     @ViewBuilder
@@ -64,7 +92,7 @@ struct PopoverView: View {
     }
 
     @ViewBuilder
-    private var usageView: some View {
+    private var claudeUsageView: some View {
         UsageBucketRow(
             label: "5-Hour Window",
             bucket: service.usage?.fiveHour
@@ -89,14 +117,29 @@ struct PopoverView: View {
             ExtraUsageRow(extra: extra)
         }
 
-        if codexService.isActive, let codex = codexService.usage {
-            Divider()
-            CodexSection(usage: codex)
-        }
-
         Divider()
-        UsageChartView(historyService: historyService)
+        UsageChartView(historyService: historyService, provider: .claude)
+    }
 
+    @ViewBuilder
+    private var codexUsageView: some View {
+        if let codex = codexService.usage {
+            CodexUsageRows(usage: codex)
+
+            Divider()
+            UsageChartView(historyService: historyService, provider: .codex)
+        } else {
+            Text("No Codex usage recorded yet.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text("Codex reports its limits when it runs — the numbers appear after the next Codex request.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var footerView: some View {
         if let error = service.lastError {
             Divider()
             Label(error, systemImage: "exclamationmark.triangle")
@@ -340,18 +383,18 @@ private struct UsageBucketRow: View {
     }
 }
 
-private struct CodexSection: View {
+private struct CodexUsageRows: View {
     let usage: CodexUsage
 
     var body: some View {
-        HStack {
-            Text("Codex")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer()
-            if let plan = usage.planType {
+        if let plan = usage.planType {
+            HStack {
+                Text("Plan")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
                 Text(plan.capitalized)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }

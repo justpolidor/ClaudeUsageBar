@@ -3,8 +3,19 @@ import Charts
 
 struct UsageChartView: View {
     @ObservedObject var historyService: UsageHistoryService
+    /// Which provider's two series to draw. The popover shows one provider at
+    /// a time, so the chart does too — four lines in a 120pt plot is noise.
+    var provider: UsageProvider = .claude
     @State private var selectedRange: TimeRange = .day1
     @State private var hoverDate: Date?
+
+    private func window5h(_ point: UsageDataPoint) -> Double? {
+        provider == .codex ? point.pct5hCodex : point.pct5h
+    }
+
+    private func window7d(_ point: UsageDataPoint) -> Double? {
+        provider == .codex ? point.pct7dCodex : point.pct7d
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -18,7 +29,9 @@ struct UsageChartView: View {
 
             let points = historyService.downsampledPoints(for: selectedRange)
 
-            if points.isEmpty {
+            // A point recorded before Codex tracking was on carries nothing for
+            // this provider, so "has points" is not the same as "has a line".
+            if !points.contains(where: { window5h($0) != nil || window7d($0) != nil }) {
                 Text("No history data yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -36,42 +49,23 @@ struct UsageChartView: View {
         }
 
         Chart {
-            ForEach(points) { point in
+            // Filtering the nils leaves a gap in the line rather than a run of
+            // false zeros, for the stretch before Codex tracking was on.
+            ForEach(points.filter { window5h($0) != nil }) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pct5h * 100)
+                    y: .value("Usage", (window5h(point) ?? 0) * 100)
                 )
                 .foregroundStyle(by: .value("Window", "5h"))
                 .interpolationMethod(.catmullRom)
             }
 
-            ForEach(points) { point in
+            ForEach(points.filter { window7d($0) != nil }) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pct7d * 100)
+                    y: .value("Usage", (window7d(point) ?? 0) * 100)
                 )
                 .foregroundStyle(by: .value("Window", "7d"))
-                .interpolationMethod(.catmullRom)
-            }
-
-            // Codex points are optional: tracking can be off, or Codex may not
-            // have run yet. Dropping the nils leaves a gap in the line instead
-            // of a run of false zeros.
-            ForEach(points.filter { $0.pct5hCodex != nil }) { point in
-                LineMark(
-                    x: .value("Time", point.timestamp),
-                    y: .value("Usage", (point.pct5hCodex ?? 0) * 100)
-                )
-                .foregroundStyle(by: .value("Window", "cx 5h"))
-                .interpolationMethod(.catmullRom)
-            }
-
-            ForEach(points.filter { $0.pct7dCodex != nil }) { point in
-                LineMark(
-                    x: .value("Time", point.timestamp),
-                    y: .value("Usage", (point.pct7dCodex ?? 0) * 100)
-                )
-                .foregroundStyle(by: .value("Window", "cx 7d"))
                 .interpolationMethod(.catmullRom)
             }
 
@@ -80,35 +74,21 @@ struct UsageChartView: View {
                     .foregroundStyle(.secondary.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1))
 
-                PointMark(
-                    x: .value("Time", iv.date),
-                    y: .value("Usage", iv.pct5h * 100)
-                )
-                .foregroundStyle(.blue)
-                .symbolSize(24)
-
-                PointMark(
-                    x: .value("Time", iv.date),
-                    y: .value("Usage", iv.pct7d * 100)
-                )
-                .foregroundStyle(.orange)
-                .symbolSize(24)
-
-                if let codex5h = iv.pct5hCodex {
+                if let pct5h = iv.value5h(for: provider) {
                     PointMark(
                         x: .value("Time", iv.date),
-                        y: .value("Usage", codex5h * 100)
+                        y: .value("Usage", pct5h * 100)
                     )
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(.blue)
                     .symbolSize(24)
                 }
 
-                if let codex7d = iv.pct7dCodex {
+                if let pct7d = iv.value7d(for: provider) {
                     PointMark(
                         x: .value("Time", iv.date),
-                        y: .value("Usage", codex7d * 100)
+                        y: .value("Usage", pct7d * 100)
                     )
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(.orange)
                     .symbolSize(24)
                 }
             }
@@ -135,9 +115,7 @@ struct UsageChartView: View {
         }
         .chartForegroundStyleScale([
             "5h": Color.blue,
-            "7d": Color.orange,
-            "cx 5h": Color.purple,
-            "cx 7d": Color.teal
+            "7d": Color.orange
         ])
         .chartLegend(.visible)
         .chartPlotStyle { plot in
@@ -163,13 +141,11 @@ struct UsageChartView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
             HStack(spacing: 6) {
-                tooltipValue(values.pct5h, color: .blue)
-                tooltipValue(values.pct7d, color: .orange)
-                if let codex5h = values.pct5hCodex {
-                    tooltipValue(codex5h, color: .purple)
+                if let pct5h = values.value5h(for: provider) {
+                    tooltipValue(pct5h, color: .blue)
                 }
-                if let codex7d = values.pct7dCodex {
-                    tooltipValue(codex7d, color: .teal)
+                if let pct7d = values.value7d(for: provider) {
+                    tooltipValue(pct7d, color: .orange)
                 }
             }
         }
@@ -230,6 +206,14 @@ struct UsageChartInterpolatedValues {
         self.pct7d = pct7d
         self.pct5hCodex = pct5hCodex
         self.pct7dCodex = pct7dCodex
+    }
+
+    func value5h(for provider: UsageProvider) -> Double? {
+        provider == .codex ? pct5hCodex : pct5h
+    }
+
+    func value7d(for provider: UsageProvider) -> Double? {
+        provider == .codex ? pct7dCodex : pct7d
     }
 }
 

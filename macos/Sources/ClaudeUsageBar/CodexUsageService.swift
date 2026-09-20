@@ -1,6 +1,28 @@
 import Foundation
 import Combine
 
+/// The two providers the app can show. Kept in one place because three
+/// separate UI decisions turn on it: which tab the popover is showing, which
+/// series the chart draws, and which bars the menu bar icon renders.
+enum UsageProvider: String, CaseIterable, Identifiable {
+    case claude
+    case codex
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .claude: return "Claude"
+        case .codex: return "Codex"
+        }
+    }
+
+    /// Four bars in 18 points is mush, so the icon shows one provider.
+    static let menuBarDefaultsKey = "menuBarProvider"
+    /// Remembered across launches: whichever tab was open last reopens.
+    static let popoverTabDefaultsKey = "popoverProvider"
+}
+
 /// Codex usage read from the Codex CLI's own session logs.
 ///
 /// Codex does not expose a usage API the way Claude does — but every request it
