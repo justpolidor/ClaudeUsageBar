@@ -52,6 +52,10 @@ make dmg            # build drag-to-Applications disk image
 make install        # copy to /Applications
 ```
 
+### Download a build from CI
+
+Every push builds the app on GitHub Actions and attaches `ClaudeUsageBar.dmg` to the run, so a branch can be installed without cutting a release: open the **Build** run under the repo's Actions tab and download the DMG from its Artifacts section. GitHub wraps artifacts in a zip, and these builds are ad-hoc signed like the releases, so first launch still wants right-click → **Open**.
+
 ## Usage
 
 1. Launch the app — a menu bar icon appears
