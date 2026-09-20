@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# actool ships with Xcode, not the Command Line Tools, so it needs DEVELOPER_DIR
+# pointed at Xcode. Keep that scoped to actool alone: with Xcode selected,
+# SwiftPM switches to the swiftbuild backend, which stamps LC_BUILD_VERSION's
+# sdk field with the deployment target (14.0) instead of the real SDK — that
+# silently costs the app the macOS 26 appearance. Same reason swift build is
+# pinned to the native build system below.
+XCODE_DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_NAME="ClaudeUsageBar"
@@ -71,7 +79,7 @@ version_to_build_number() {
 
 build_app_bundle() {
     echo "==> Building release binary..."
-    swift build -c release
+    swift build -c release --build-system native
 
     local binary="$BUILD_DIR/release/$APP_NAME"
     if [[ ! -f "$binary" ]]; then
@@ -113,6 +121,7 @@ build_app_bundle() {
     ditto "$resource_bundle" "$APP_BUNDLE/Contents/Resources/$(basename "$resource_bundle")"
 
     echo "==> Compiling Asset Catalog..."
+    DEVELOPER_DIR="$XCODE_DEVELOPER_DIR" \
     actool --compile "$APP_BUNDLE/Contents/Resources" \
            --platform macosx \
            --minimum-deployment-target 14.0 \

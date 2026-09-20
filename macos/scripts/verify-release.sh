@@ -31,9 +31,20 @@ verify_app_bundle() {
     echo "==> Verifying packaged resources..."
     [[ -f "$app_plist" ]] || { echo "Error: missing Info.plist"; exit 1; }
     [[ -d "$resource_bundle" ]] || { echo "Error: missing SwiftPM resource bundle"; exit 1; }
-    [[ -f "$resource_bundle/Info.plist" ]] || { echo "Error: missing resource bundle Info.plist"; exit 1; }
-    [[ -f "$resource_bundle/claude-logo.png" ]] || { echo "Error: missing packaged logo resource"; exit 1; }
-    [[ -f "$resource_bundle/en.lproj/Localizable.strings" ]] || { echo "Error: missing packaged localization resource"; exit 1; }
+
+    # SwiftPM's native build system emits a flat resource bundle; the swiftbuild
+    # backend (used whenever DEVELOPER_DIR points at Xcode) emits a macOS-style
+    # one with Contents/. Both are valid for Bundle.module.
+    local resource_plist="$resource_bundle/Info.plist"
+    local resource_root="$resource_bundle"
+    if [[ -f "$resource_bundle/Contents/Info.plist" ]]; then
+        resource_plist="$resource_bundle/Contents/Info.plist"
+        resource_root="$resource_bundle/Contents/Resources"
+    fi
+
+    [[ -f "$resource_plist" ]] || { echo "Error: missing resource bundle Info.plist"; exit 1; }
+    [[ -f "$resource_root/claude-logo.png" ]] || { echo "Error: missing packaged logo resource"; exit 1; }
+    [[ -f "$resource_root/en.lproj/Localizable.strings" ]] || { echo "Error: missing packaged localization resource"; exit 1; }
     [[ -d "$sparkle_framework" ]] || { echo "Error: missing Sparkle.framework"; exit 1; }
 
     echo "==> Verifying app signature..."
