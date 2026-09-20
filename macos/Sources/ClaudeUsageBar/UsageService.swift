@@ -13,6 +13,14 @@ class UsageService: ObservableObject {
 
     var historyService: UsageHistoryService?
     var notificationService: NotificationService?
+    /// Codex rides on this service's poll tick so both providers land in the
+    /// same history point — two independent tickers would write half-filled
+    /// points and tear the chart's lines apart.
+    ///
+    /// ponytail: that also means Codex only updates while signed in to Claude,
+    /// which is fine while the popover gates everything behind sign-in. Give
+    /// Codex its own ticker if the app ever runs Codex-only.
+    var codexService: CodexUsageService?
 
     private var timer: Timer?
     private let session: URLSession
@@ -317,6 +325,10 @@ class UsageService: ObservableObject {
     // MARK: - API Fetch
 
     func fetchUsage() async {
+        // Reads local files only — no reason to make it wait on the network
+        // request, and it stays correct if the Claude call fails.
+        await codexService?.refresh()
+
         guard loadCredentials() != nil else {
             lastError = "Not signed in"
             isAuthenticated = false
@@ -362,8 +374,25 @@ class UsageService: ObservableObject {
             usage = reconciled
             lastError = nil
             lastUpdated = Date()
-            historyService?.recordDataPoint(pct5h: pct5h, pct7d: pct7d)
-            notificationService?.checkAndNotify(pct5h: pct5h, pct7d: pct7d, pctExtra: pctExtra)
+            // nil rather than 0 when Codex has nothing to say, so the chart
+            // leaves a gap and the notifier sees no downward crossing.
+            let hasCodex = codexService?.isActive == true && codexService?.usage != nil
+            let pct5hCodex = hasCodex ? codexService?.pct5h : nil
+            let pct7dCodex = hasCodex ? codexService?.pct7d : nil
+
+            historyService?.recordDataPoint(
+                pct5h: pct5h,
+                pct7d: pct7d,
+                pct5hCodex: pct5hCodex,
+                pct7dCodex: pct7dCodex
+            )
+            notificationService?.checkAndNotify(
+                pct5h: pct5h,
+                pct7d: pct7d,
+                pctExtra: pctExtra,
+                pct5hCodex: pct5hCodex,
+                pct7dCodex: pct7dCodex
+            )
             if currentInterval != baseInterval {
                 currentInterval = baseInterval
                 scheduleTimer()

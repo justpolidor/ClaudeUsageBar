@@ -54,6 +54,27 @@ struct UsageChartView: View {
                 .interpolationMethod(.catmullRom)
             }
 
+            // Codex points are optional: tracking can be off, or Codex may not
+            // have run yet. Dropping the nils leaves a gap in the line instead
+            // of a run of false zeros.
+            ForEach(points.filter { $0.pct5hCodex != nil }) { point in
+                LineMark(
+                    x: .value("Time", point.timestamp),
+                    y: .value("Usage", (point.pct5hCodex ?? 0) * 100)
+                )
+                .foregroundStyle(by: .value("Window", "cx 5h"))
+                .interpolationMethod(.catmullRom)
+            }
+
+            ForEach(points.filter { $0.pct7dCodex != nil }) { point in
+                LineMark(
+                    x: .value("Time", point.timestamp),
+                    y: .value("Usage", (point.pct7dCodex ?? 0) * 100)
+                )
+                .foregroundStyle(by: .value("Window", "cx 7d"))
+                .interpolationMethod(.catmullRom)
+            }
+
             if let iv = interpolated {
                 RuleMark(x: .value("Selected", iv.date))
                     .foregroundStyle(.secondary.opacity(0.4))
@@ -72,6 +93,24 @@ struct UsageChartView: View {
                 )
                 .foregroundStyle(.orange)
                 .symbolSize(24)
+
+                if let codex5h = iv.pct5hCodex {
+                    PointMark(
+                        x: .value("Time", iv.date),
+                        y: .value("Usage", codex5h * 100)
+                    )
+                    .foregroundStyle(.purple)
+                    .symbolSize(24)
+                }
+
+                if let codex7d = iv.pct7dCodex {
+                    PointMark(
+                        x: .value("Time", iv.date),
+                        y: .value("Usage", codex7d * 100)
+                    )
+                    .foregroundStyle(.teal)
+                    .symbolSize(24)
+                }
             }
         }
         .chartXScale(domain: Date.now.addingTimeInterval(-selectedRange.interval)...Date.now)
@@ -96,7 +135,9 @@ struct UsageChartView: View {
         }
         .chartForegroundStyleScale([
             "5h": Color.blue,
-            "7d": Color.orange
+            "7d": Color.orange,
+            "cx 5h": Color.purple,
+            "cx 7d": Color.teal
         ])
         .chartLegend(.visible)
         .chartPlotStyle { plot in
@@ -108,7 +149,7 @@ struct UsageChartView: View {
         .chartXSelection(value: $hoverDate)
         .overlay(alignment: .top) {
             if let iv = interpolated {
-                tooltipView(date: iv.date, pct5h: iv.pct5h, pct7d: iv.pct7d)
+                tooltipView(values: iv)
             }
         }
         .frame(height: 120)
@@ -116,23 +157,31 @@ struct UsageChartView: View {
     }
 
     @ViewBuilder
-    private func tooltipView(date: Date, pct5h: Double, pct7d: Double) -> some View {
+    private func tooltipView(values: UsageChartInterpolatedValues) -> some View {
         VStack(spacing: 2) {
-            Text(date, format: tooltipDateFormat)
+            Text(values.date, format: tooltipDateFormat)
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
             HStack(spacing: 6) {
-                Label("\(Int(round(pct5h * 100)))%", systemImage: "circle.fill")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.blue)
-                Label("\(Int(round(pct7d * 100)))%", systemImage: "circle.fill")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.orange)
+                tooltipValue(values.pct5h, color: .blue)
+                tooltipValue(values.pct7d, color: .orange)
+                if let codex5h = values.pct5hCodex {
+                    tooltipValue(codex5h, color: .purple)
+                }
+                if let codex7d = values.pct7dCodex {
+                    tooltipValue(codex7d, color: .teal)
+                }
             }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func tooltipValue(_ fraction: Double, color: Color) -> some View {
+        Label("\(Int(round(fraction * 100)))%", systemImage: "circle.fill")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(color)
     }
 
     // MARK: - Formatting
@@ -166,6 +215,22 @@ struct UsageChartInterpolatedValues {
     let date: Date
     let pct5h: Double
     let pct7d: Double
+    let pct5hCodex: Double?
+    let pct7dCodex: Double?
+
+    init(
+        date: Date,
+        pct5h: Double,
+        pct7d: Double,
+        pct5hCodex: Double? = nil,
+        pct7dCodex: Double? = nil
+    ) {
+        self.date = date
+        self.pct5h = pct5h
+        self.pct7d = pct7d
+        self.pct5hCodex = pct5hCodex
+        self.pct7dCodex = pct7dCodex
+    }
 }
 
 enum UsageChartInterpolation {
@@ -209,7 +274,13 @@ enum UsageChartInterpolation {
                 return UsageChartInterpolatedValues(
                     date: date,
                     pct5h: clampToUnitInterval(pct5h),
-                    pct7d: clampToUnitInterval(pct7d)
+                    pct7d: clampToUnitInterval(pct7d),
+                    pct5hCodex: interpolateOptional(
+                        sorted, i0: i0, i: i, i3: i3, t: t, key: \.pct5hCodex
+                    ),
+                    pct7dCodex: interpolateOptional(
+                        sorted, i0: i0, i: i, i3: i3, t: t, key: \.pct7dCodex
+                    )
                 )
             }
         }
@@ -219,5 +290,26 @@ enum UsageChartInterpolation {
 
     private static func clampToUnitInterval(_ value: Double) -> Double {
         min(max(value, 0), 1)
+    }
+
+    /// Interpolates a series that may be missing values.
+    ///
+    /// Both bracketing points must have one — a value cannot be invented for a
+    /// span where Codex reported nothing. The outer control points fall back to
+    /// their neighbours, which is what the existing series does at the ends of
+    /// the array anyway.
+    private static func interpolateOptional(
+        _ sorted: [UsageDataPoint],
+        i0: Int,
+        i: Int,
+        i3: Int,
+        t: Double,
+        key: KeyPath<UsageDataPoint, Double?>
+    ) -> Double? {
+        guard let p1 = sorted[i][keyPath: key],
+              let p2 = sorted[i + 1][keyPath: key] else { return nil }
+        let p0 = sorted[i0][keyPath: key] ?? p1
+        let p3 = sorted[i3][keyPath: key] ?? p2
+        return clampToUnitInterval(catmullRom(p0, p1, p2, p3, t: t))
     }
 }

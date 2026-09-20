@@ -23,6 +23,7 @@ A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it
 - Menu bar icon with a mini dual-bar showing 5-hour and 7-day utilization
 - Detailed popover with per-window usage, per-model breakdown, and reset timers
 - Extra usage tracking with USD currency display
+- Codex usage alongside Claude, read straight from the Codex CLI's session logs — no second sign-in
 - Usage history chart — see how your usage evolves over time (1h / 6h / 1d / 7d / 30d)
 - Hover over the chart to see exact values at any point
 - Configurable polling interval (5m / 15m / 30m / 1h)
@@ -75,6 +76,12 @@ All data is stored locally in `~/.config/claude-usage-bar/`:
 | `history.json` | Usage history for the chart (30-day retention) |
 
 History is buffered in memory and flushed to disk every 5 minutes and on app quit. No data is sent anywhere other than the Anthropic API.
+
+## Codex
+
+If the Codex CLI is installed, its rate-limit windows show up in the popover too. Codex has no usage API, but every request it makes records the account's limits in its own session log, so the app reads the newest entry from `~/.codex/sessions/` — nothing to authorize, nothing fetched.
+
+The catch: those numbers only move when Codex runs, so the popover labels them with when Codex last reported rather than when the app last polled. Settings turns tracking off and picks which provider the menu bar icon shows (four bars do not fit).
 
 ## Development
 
@@ -137,6 +144,7 @@ macos/                           # macOS menu bar app (Swift/SwiftUI)
 ├── Sources/ClaudeUsageBar/
 │   ├── ClaudeUsageBarApp.swift      # App entry point, menu bar setup
 │   ├── UsageService.swift           # OAuth, polling, API calls
+│   ├── CodexUsageService.swift      # Codex limits read from CLI session logs
 │   ├── UsageModel.swift             # API response types
 │   ├── UsageHistoryModel.swift      # History data types, time ranges
 │   ├── UsageHistoryService.swift    # Persistence, downsampling

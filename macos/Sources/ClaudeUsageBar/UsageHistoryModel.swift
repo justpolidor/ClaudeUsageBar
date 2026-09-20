@@ -5,12 +5,26 @@ struct UsageDataPoint: Codable, Identifiable {
     let timestamp: Date
     let pct5h: Double
     let pct7d: Double
+    /// Codex's two windows, nil when Codex tracking is off or has never
+    /// reported. Optional so a `history.json` written before Codex support
+    /// still decodes, and so the chart can skip the gap rather than draw a
+    /// false zero.
+    let pct5hCodex: Double?
+    let pct7dCodex: Double?
 
-    init(timestamp: Date = Date(), pct5h: Double, pct7d: Double) {
+    init(
+        timestamp: Date = Date(),
+        pct5h: Double,
+        pct7d: Double,
+        pct5hCodex: Double? = nil,
+        pct7dCodex: Double? = nil
+    ) {
         self.id = UUID()
         self.timestamp = timestamp
         self.pct5h = pct5h
         self.pct7d = pct7d
+        self.pct5hCodex = pct5hCodex
+        self.pct7dCodex = pct7dCodex
     }
 }
 

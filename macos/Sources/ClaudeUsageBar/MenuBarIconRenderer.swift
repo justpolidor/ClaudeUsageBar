@@ -37,14 +37,32 @@ private func drawRow(label: String, barX: CGFloat, barY: CGFloat, labelX: CGFloa
     drawBarFill(barX, barY)
 }
 
-func renderIcon(pct5h: Double, pct7d: Double) -> NSImage {
+/// Which provider's windows the menu bar shows. Four bars in 18 points is
+/// mush, so the icon shows one provider and the popover shows both.
+enum MenuBarProvider: String, CaseIterable, Identifiable {
+    case claude
+    case codex
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .claude: return "Claude"
+        case .codex: return "Codex"
+        }
+    }
+
+    static let defaultsKey = "menuBarProvider"
+}
+
+func renderIcon(pct5h: Double, pct7d: Double, provider: MenuBarProvider = .claude) -> NSImage {
     let image = NSImage(size: NSSize(width: iconWidth, height: iconHeight), flipped: true) { _ in
         let offset = logoSize + logoGap
         let barX = offset + labelWidth + labelGap
         let topY = (iconHeight - barHeight * 2 - rowGap) / 2
         let bottomY = topY + barHeight + rowGap
 
-        drawClaudeLogo(x: 0, y: (iconHeight - logoSize) / 2, size: logoSize)
+        drawProviderMark(provider, x: 0, y: (iconHeight - logoSize) / 2, size: logoSize)
 
         drawRow(label: "5h", barX: barX, barY: topY, labelX: offset) { x, y in
             drawBar(x: x, y: y, width: barWidth, height: barHeight, cornerRadius: cornerRadius, pct: pct5h)
@@ -120,4 +138,24 @@ private let claudeLogoImage: NSImage? = {
 private func drawClaudeLogo(x: CGFloat, y: CGFloat, size: CGFloat) {
     guard let logo = claudeLogoImage else { return }
     logo.draw(in: NSRect(x: x, y: y, width: size, height: size))
+}
+
+/// ponytail: Codex gets a "cx" wordmark rather than a logo — no asset to ship
+/// and no trademark to get wrong. Swap in an image here if one turns up.
+private func drawProviderMark(_ provider: MenuBarProvider, x: CGFloat, y: CGFloat, size: CGFloat) {
+    switch provider {
+    case .claude:
+        drawClaudeLogo(x: x, y: y, size: size)
+    case .codex:
+        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
+        let mark = NSAttributedString(
+            string: "cx",
+            attributes: [.font: font, .foregroundColor: NSColor.black]
+        )
+        let markSize = mark.size()
+        mark.draw(at: NSPoint(
+            x: x + (size - markSize.width) / 2,
+            y: y + (size - markSize.height) / 2
+        ))
+    }
 }

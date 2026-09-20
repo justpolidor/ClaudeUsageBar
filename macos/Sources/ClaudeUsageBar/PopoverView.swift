@@ -4,6 +4,7 @@ struct PopoverView: View {
     @ObservedObject var service: UsageService
     @ObservedObject var historyService: UsageHistoryService
     @ObservedObject var notificationService: NotificationService
+    @ObservedObject var codexService: CodexUsageService
     @ObservedObject var appUpdater: AppUpdater
     @AppStorage("setupComplete") private var setupComplete = false
 
@@ -86,6 +87,11 @@ struct PopoverView: View {
         if let extra = service.usage?.extraUsage, extra.isEnabled {
             Divider()
             ExtraUsageRow(extra: extra)
+        }
+
+        if codexService.isActive, let codex = codexService.usage {
+            Divider()
+            CodexSection(usage: codex)
         }
 
         Divider()
@@ -331,6 +337,43 @@ private struct UsageBucketRow: View {
     private var percentageText: String {
         guard let pct = bucket?.utilization else { return "—" }
         return "\(Int(round(pct)))%"
+    }
+}
+
+private struct CodexSection: View {
+    let usage: CodexUsage
+
+    var body: some View {
+        HStack {
+            Text("Codex")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            if let plan = usage.planType {
+                Text(plan.capitalized)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        if usage.primary != nil {
+            UsageBucketRow(label: usage.primaryLabel, bucket: usage.primary)
+        }
+        if usage.secondary != nil {
+            UsageBucketRow(label: usage.secondaryLabel, bucket: usage.secondary)
+        }
+        if let balance = usage.creditBalance {
+            Text("Credits: \(balance)")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+
+        // These numbers come from Codex's own logs, so they are as old as the
+        // last thing Codex did — saying so avoids reading them as live.
+        Text("From Codex \(usage.observedAt, style: .relative) ago")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
     }
 }
 

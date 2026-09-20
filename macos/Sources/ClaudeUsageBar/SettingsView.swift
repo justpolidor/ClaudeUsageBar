@@ -4,7 +4,9 @@ import ServiceManagement
 struct SettingsWindowContent: View {
     @ObservedObject var service: UsageService
     @ObservedObject var notificationService: NotificationService
+    @ObservedObject var codexService: CodexUsageService
     @ObservedObject var appUpdater: AppUpdater
+    @AppStorage(MenuBarProvider.defaultsKey) private var menuBarProvider = MenuBarProvider.claude
 
     var body: some View {
         Form {
@@ -19,6 +21,30 @@ struct SettingsWindowContent: View {
                         Text(pollingOptionLabel(for: mins))
                             .tag(mins)
                     }
+                }
+            }
+
+            Section("Codex") {
+                if codexService.isInstalled {
+                    Toggle("Track Codex usage", isOn: Binding(
+                        get: { codexService.isEnabled },
+                        set: { codexService.setEnabled($0) }
+                    ))
+
+                    Text("Read from the Codex CLI's session logs, so the numbers only move when Codex runs.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Picker("Menu Bar Shows", selection: $menuBarProvider) {
+                        ForEach(MenuBarProvider.allCases) { provider in
+                            Text(provider.displayName).tag(provider)
+                        }
+                    }
+                    .disabled(!codexService.isEnabled)
+                } else {
+                    Text("No Codex CLI session data found in ~/.codex/sessions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
