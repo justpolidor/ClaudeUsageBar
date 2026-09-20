@@ -52,9 +52,26 @@ make dmg            # build drag-to-Applications disk image
 make install        # copy to /Applications
 ```
 
-### Download a build from CI
+### Download the latest main build
 
-Every push builds the app on GitHub Actions and attaches `ClaudeUsageBar.dmg` to the run, so a branch can be installed without cutting a release: open the **Build** run under the repo's Actions tab and download the DMG from its Artifacts section. GitHub wraps artifacts in a zip, and these builds are ad-hoc signed like the releases, so first launch still wants right-click → **Open**.
+Every merge to `main` publishes a DMG to a rolling `latest` pre-release, so the newest build always sits at the same URL:
+
+```text
+https://github.com/justpolidor/ClaudeUsageBar/releases/download/latest/ClaudeUsageBar.dmg
+```
+
+It is replaced by each merge and is never offered to Sparkle — versioned releases still come from `v*` tags. Like those releases it is ad-hoc signed, so first launch wants right-click → **Open**.
+
+To get a DMG for a branch before merging, run the **Tests** workflow manually from the Actions tab (`workflow_dispatch`); that run packages one and attaches it as an artifact.
+
+### What CI runs
+
+| Trigger | Workflow | What it does |
+|---------|----------|--------------|
+| Pull request to `main` | `tests.yml` | Runs the test suite |
+| Manual dispatch | `tests.yml` | Tests, plus a DMG artifact for that branch |
+| Merge to `main` | `publish.yml` | Tests, then publishes the DMG to the `latest` pre-release |
+| `v*` tag | `release.yml` | Full versioned release, signed Sparkle appcast, GitHub Pages |
 
 ## Usage
 
